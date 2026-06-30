@@ -1,0 +1,9 @@
+.env
+.n8n/
+n8n_data/
+*.sqlite
+*.db
+credentials/
+node_modules/
+.DS_Store
+Thumbs.db
