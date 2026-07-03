@@ -1,0 +1,202 @@
+{
+  "name": "ChatBot IA - Suporte com Base de Conhecimento",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "groqApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.groq_body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -80,
+        -192
+      ],
+      "id": "46bb881e-99fc-404d-a98e-b2efbf328f13",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseMode": "responseNodes"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -752,
+        -192
+      ],
+      "id": "1029a071-8dd9-49bb-87f6-bee43ade077c",
+      "name": "When chat message received"
+    },
+    {
+      "parameters": {
+        "message": "={{ $json.resposta }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1.3,
+      "position": [
+        288,
+        -192
+      ],
+      "id": "249b5af3-e6f2-4e12-b8ea-2807fbb7c381",
+      "name": "Chat"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "<URL_DA_SUA_PLANILHA_GOOGLE_SHEETS>",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Base_Conhecimento",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -576,
+        -192
+      ],
+      "id": "d8c12cc5-822f-4f48-af35-6f7f15da96ca",
+      "name": "Base_Conhecimento"
+    },
+    {
+      "parameters": {
+        "jsCode": "const pergunta = $json.pergunta_usuario || \"\";\nconst base = $json.base_encontrada || [];\n\nreturn [\n  {\n    json: {\n      groq_body: {\n        model: \"llama-3.3-70b-versatile\",\n\n        messages: [\n          {\n            role: \"system\",\n            content: `Você é um assistente de suporte técnico da Nola, uma empresa de tecnologia para gestão de restaurantes.\n\nSeu papel é ajudar clientes com dúvidas sobre o sistema, sempre com clareza, cordialidade e objetividade.\n\nRegras:\n1. Responda apenas com base nas informações fornecidas na base de conhecimento.\n2. Não invente funcionalidades, telas ou procedimentos.\n3. Se a base não tiver informação suficiente, diga que não encontrou a resposta na base e recomende abrir ou encaminhar um chamado para o time de Customer Success.\n4. Quando possível, responda em passos numerados.\n5. Se identificar que pode ser bug, oriente coletar evidências como print, horário, loja afetada e descrição do comportamento.\n6. Mantenha tom profissional, simples e humano.`\n          },\n\n          {\n            role: \"user\",\n            content: `Pergunta do cliente:\n${pergunta}\n\nBase de conhecimento encontrada:\n${JSON.stringify(base, null, 2)}`\n          }\n        ],\n\n        temperature: 0.2,\n        max_tokens: 600\n      }\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        -192
+      ],
+      "id": "e22c7905-b4fe-408a-9412-5d8ca94f6467",
+      "name": "Prompt IA"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "54cc06b7-ba5d-46c6-b5c9-b3a1dbf78452",
+              "name": "resposta",
+              "value": "={{ ($json.choices?.[0]?.message?.content || \"Sem resposta da IA\").replaceAll(\"\\\\n\", \"\\n\") }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        96,
+        -192
+      ],
+      "id": "20f8e6f2-e87b-48ee-be17-0d44d52b822f",
+      "name": "Formatar Resposta"
+    },
+    {
+      "parameters": {
+        "jsCode": "const userQuestion = $('When chat message received').first().json.chatInput || \"\";\n\nconst normalizedQuestion = userQuestion\n  .toLowerCase()\n  .replace(/[.,;:!?()[\\]{}\"']/g, \" \");\n\nconst questionWords = normalizedQuestion\n  .split(/\\s+/)\n  .filter(word => word.length > 2);\n\nfunction normalizeText(text) {\n  return String(text || \"\")\n    .toLowerCase()\n    .replace(/[.,;:!?()[\\]{}\"']/g, \" \");\n}\n\nfunction calculateScore(row) {\n  const baseText = normalizeText(`\n    ${row.categoria || \"\"}\n    ${row.pergunta || \"\"}\n    ${row.resposta || \"\"}\n    ${row.palavras_chave || \"\"}\n  `);\n\n  let score = 0;\n\n  for (const word of questionWords) {\n    if (baseText.includes(word)) {\n      score++;\n    }\n  }\n\n  if (baseText.includes(normalizedQuestion.trim())) {\n    score += 5;\n  }\n\n  return score;\n}\n\nconst rows = items.map(item => item.json);\n\nconst rankedRows = rows\n  .map(row => ({\n    ...row,\n    score: calculateScore(row),\n  }))\n  .filter(row => row.score > 0)\n  .sort((a, b) => b.score - a.score)\n  .slice(0, 5);\n\nreturn [\n  {\n    json: {\n      pergunta_usuario: userQuestion,\n      base_encontrada: rankedRows,\n      encontrou_base: rankedRows.length > 0,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -416,
+        -192
+      ],
+      "id": "3408af8e-db66-4c68-b622-210357ca51f3",
+      "name": "Filtro Base_Conhecimento"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Base_Conhecimento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Formatar Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Base_Conhecimento": {
+      "main": [
+        [
+          {
+            "node": "Filtro Base_Conhecimento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prompt IA": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Resposta": {
+      "main": [
+        [
+          {
+            "node": "Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtro Base_Conhecimento": {
+      "main": [
+        [
+          {
+            "node": "Prompt IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}

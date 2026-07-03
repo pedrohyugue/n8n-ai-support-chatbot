@@ -1,0 +1,4 @@
+categoria,pergunta,resposta,palavras_chave
+Acesso,Como resetar minha senha?,Acesse a tela de login e clique em esqueci minha senha. Depois siga as instruções enviadas por e-mail.,senha login acesso recuperação
+Bug,O sistema está travando,O usuário deve coletar print horário loja afetada e descrição do comportamento para abertura de chamado.,bug travamento erro chamado evidências
+Cadastro,Como cadastrar um novo usuário?,Acesse o menu de usuários clique em novo usuário preencha os dados obrigatórios e salve.,usuário cadastro permissão acesso
